@@ -19,15 +19,71 @@ void *load_bytes(FILE *obj_file, int offset, int size) {
     return buffer;
 }
 
+void dump_segment_commands(FILE *obj_file, int offset, int is_swap, uint32_t ncmds) {
+    int actual_offset = offset;
+    
+    for (int i = 0; i < ncmds; ++ i) {
+        load_command *cmd = (load_command *)load_bytes(obj_file, actual_offset, sizeof(load_command));
+        
+        if (is_swap) {
+            swap_load_command(cmd, NX_UnknownByteOrder);
+        }
+        
+        if (cmd -> cmd == LC_SEGMENT_64) {
+            segment_command_64 *segment_64 = (segment_command_64 *) load_bytes(obj_file, actual_offset,
+                                                                               sizeof(segment_command_64));
+            if (is_swap) {
+                swap_segment_command_64(segment_64, NX_UnknownByteOrder);
+            }
+            printf("seg: %s\n", segment_64 -> segname);
+            free(segment_64);
+        }
+        else {
+            segment_command *segment = (segment_command *)load_bytes(obj_file, actual_offset, sizeof(segment_command));
+            if (is_swap) {
+                swap_segment_command(segment, NX_UnknownByteOrder);
+            }
+            printf("seg: %s\n", segment -> segname);
+            free(segment);
+        }
+        
+        actual_offset += cmd -> cmdsize;
+        free(cmd);
+    }
+}
+
 void dump_mach_header(FILE *obj_file, int offset, int is_64, int is_swap) {
+    
+    uint32_t ncmds;
+    int load_commands_offset = offset;
+    
     if (is_64) {
         int header_size = sizeof(mach_header_64);
         mach_header_64 *header = (mach_header_64 *)load_bytes(obj_file, offset, header_size);
         if (is_swap) {
             swap_mach_header_64(header, NX_UnknownByteOrder);
         }
+        
+        ncmds = header -> ncmds;
+        load_commands_offset += header_size;
+        
+        free(header);
+        
+        dump_segment_commands(obj_file, load_commands_offset, is_swap, ncmds);
+    }
+    else {
+        int header_size = sizeof(mach_header);
+        mach_header *header = (mach_header *)load_bytes(obj_file, offset, header_size);
+        if (is_swap) {
+            swap_mach_header(header, NX_UnknownByteOrder);
+        }
+        
+        ncmds = header -> ncmds;
+        load_commands_offset += header_size;
+        
         free(header);
     }
+    
 }
 
 /** Magic Model **/
@@ -76,22 +132,25 @@ void dump_segments(FILE *obj_file) {
     uint32_t magic = read_magic(obj_file, 0);
     int is_64 = is_magic_64(magic);
     int is_swap = should_swap_bytes(magic);
-
+    
     printf("magic: 0x%X \nis_64: %d \nis_swap: %d \n", magic, is_64, is_swap);
+    
+    dump_mach_header(obj_file, 0, is_64, is_swap);
 }
 
 int main() {
     printf("macho-dumper start work. \n");
-
+    
     const char *filename = "demo";
-
+    
     FILE *obj_file = fopen(filename, "rb");
-
+    
     printf("%p\n", obj_file);
-
+    
     dump_segments(obj_file);
-
+    
     fclose(obj_file);
-
+    
     return 0;
 }
+
