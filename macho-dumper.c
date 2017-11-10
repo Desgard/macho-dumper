@@ -3,6 +3,33 @@
 #include <mach-o/loader.h>
 #include <mach-o/swap.h>
 
+/** CPU Name **/
+struct _cpu_type_name {
+    _cpu_type_name(cpu_type_t cpu_type, const char *cpu_name) {
+        this -> cpu_type = cpu_type;
+        this -> cpu_name = cpu_name;
+    }
+    
+    cpu_type_t cpu_type;
+    const char *cpu_name;
+};
+
+static _cpu_type_name cpu_type_names[] = {
+    _cpu_type_name(CPU_TYPE_I386, "i386"),
+    _cpu_type_name(CPU_TYPE_X86, "x86"),
+    _cpu_type_name(CPU_TYPE_ARM, "arm"),
+    _cpu_type_name(CPU_TYPE_ARM64, "arm64")
+};
+
+static const char* cpu_type_name(cpu_type_t cpu_type) {
+    static int cpu_type_names_size = sizeof(cpu_type_names) / sizeof(_cpu_type_name);
+    for (int i = 0; i < cpu_type_names_size; ++ i) {
+        if (cpu_type == cpu_type_names[i].cpu_type) {
+            return cpu_type_names[i].cpu_name;
+        }
+    }
+    return "unknown";
+}
 
 /** Mach-O Header **/
 /**
@@ -19,6 +46,14 @@ void *load_bytes(FILE *obj_file, int offset, int size) {
     return buffer;
 }
 
+/**
+ * 解析 Segment 名
+ *
+ * @param obj_file
+ * @param offset
+ * @param is_swap
+ * @param ncmds
+ */
 void dump_segment_commands(FILE *obj_file, int offset, int is_swap, uint32_t ncmds) {
     int actual_offset = offset;
     
@@ -35,7 +70,7 @@ void dump_segment_commands(FILE *obj_file, int offset, int is_swap, uint32_t ncm
             if (is_swap) {
                 swap_segment_command_64(segment_64, NX_UnknownByteOrder);
             }
-            printf("seg: %s\n", segment_64 -> segname);
+            printf("Segment: %s\n", segment_64 -> segname);
             free(segment_64);
         }
         else {
@@ -43,7 +78,7 @@ void dump_segment_commands(FILE *obj_file, int offset, int is_swap, uint32_t ncm
             if (is_swap) {
                 swap_segment_command(segment, NX_UnknownByteOrder);
             }
-            printf("seg: %s\n", segment -> segname);
+            printf("Segment: %s\n", segment -> segname);
             free(segment);
         }
         
@@ -52,6 +87,14 @@ void dump_segment_commands(FILE *obj_file, int offset, int is_swap, uint32_t ncm
     }
 }
 
+/**
+ * 每次进行制定空间偏移，跳过中间区域
+ *
+ * @param obj_file
+ * @param offset
+ * @param is_64
+ * @param is_swap
+ */
 void dump_mach_header(FILE *obj_file, int offset, int is_64, int is_swap) {
     
     uint32_t ncmds;
@@ -67,6 +110,8 @@ void dump_mach_header(FILE *obj_file, int offset, int is_64, int is_swap) {
         ncmds = header -> ncmds;
         load_commands_offset += header_size;
         
+        printf("CPU Architecture: %s\n", cpu_type_name(header -> cputype));
+        
         free(header);
         
         dump_segment_commands(obj_file, load_commands_offset, is_swap, ncmds);
@@ -81,8 +126,13 @@ void dump_mach_header(FILE *obj_file, int offset, int is_64, int is_swap) {
         ncmds = header -> ncmds;
         load_commands_offset += header_size;
         
+        printf("CPU Architecture: %s\n", cpu_type_name(header -> cputype));
+        
         free(header);
+        
+        dump_segment_commands(obj_file, load_commands_offset, is_swap, ncmds);
     }
+    
     
 }
 
@@ -139,13 +189,12 @@ void dump_segments(FILE *obj_file) {
 }
 
 int main() {
-    printf("macho-dumper start work. \n");
+    printf("macho-dumper start work. \n\n");
     
     const char *filename = "demo";
     
     FILE *obj_file = fopen(filename, "rb");
     
-    printf("%p\n", obj_file);
     
     dump_segments(obj_file);
     
@@ -153,4 +202,3 @@ int main() {
     
     return 0;
 }
-
